@@ -10,9 +10,18 @@
         "mode": {
           ".validate": "newData.isString() && (newData.val() === 'classic' || newData.val() === 'crown')"
         },
+        "loser": {
+          ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() < 5"
+        },
         "players": {
           "$uid": {
             ".validate": "newData.exists() === false || (newData.hasChildren(['name','seat','connected','walls','pawn']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 18 && newData.child('seat').isNumber() && newData.child('seat').val() >= 0 && newData.child('seat').val() < 5 && newData.child('connected').isBoolean() && newData.child('walls').isNumber() && newData.child('walls').val() >= 0 && newData.child('walls').val() <= 10)",
+            "finished": {
+              ".validate": "newData.isBoolean()"
+            },
+            "place": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5"
+            },
             "pawn": {
               ".validate": "newData.hasChildren(['x','y']) && newData.child('x').isNumber() && newData.child('x').val() >= 0 && newData.child('x').val() <= 10 && newData.child('y').isNumber() && newData.child('y').val() >= 0 && newData.child('y').val() <= 10"
             }

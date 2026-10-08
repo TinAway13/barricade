@@ -22,7 +22,7 @@ function setup(overrides={}) {
     addEventListener(){},clearTimeout(){},setTimeout(){},Date,console,__TEST_STATE__:state,
     __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
   sandbox.globalThis=sandbox;
-  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms};'),sandbox);
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms,nextConnectedSeat,roundOver,finishCrownPlayer};'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
   const boardEvent=(size,u,v,extra={})=>({clientX:57+u*486/size,clientY:57+v*486/size,pointerType:'mouse',pointerId:1,...extra});
   return {handlers,sent,event,boardEvent,state,elements,api:sandbox.__TEST_API__};
@@ -60,8 +60,35 @@ test('Crown rounds randomize five unique non-corner edge spawns',()=>{
   assert.equal(new Set(keys).size,5);
   assert.ok(pawns.every(p=>(p.x===0||p.x===10||p.y===0||p.y===10)&&!((p.x===0||p.x===10)&&(p.y===0||p.y===10))));
   assert.ok(Object.values(room.players).every(p=>p.walls===8));
+  assert.ok(Object.values(room.players).every(p=>p.finished===false&&p.place===0));
   assert.equal(room.turn,0);
   assert.equal(room.winner,-1);
+  assert.equal(room.loser,-1);
+});
+
+test('reaching the Crown makes a player safe without ending the round',()=>{
+  const players=Array.from({length:5},(_,seat)=>({seat,name:`P${seat+1}`,connected:true,finished:false,place:0,walls:8,pawn:{x:seat+1,y:0}}));
+  const view={mode:'crown',maxPlayers:5,winner:-1,loser:-1,players};
+  const room={turn:0,winner:-1,loser:-1,players:Object.fromEntries(players.map((player,seat)=>[`u${seat}`,{...player}]))};
+  const {api}=setup();
+  api.finishCrownPlayer(room,view,'u0',0);
+  assert.equal(room.players.u0.finished,true);
+  assert.equal(room.players.u0.place,1);
+  assert.equal(room.turn,1);
+  assert.equal(room.loser,-1);
+  assert.equal(api.roundOver({...view,loser:room.loser}),false);
+});
+
+test('the final Crown player is declared the loser',()=>{
+  const players=Array.from({length:5},(_,seat)=>({seat,name:`P${seat+1}`,connected:true,finished:seat<3,place:seat<3?seat+1:0,walls:8,pawn:{x:seat+1,y:0}}));
+  const view={mode:'crown',maxPlayers:5,winner:-1,loser:-1,players};
+  const room={turn:3,winner:-1,loser:-1,players:Object.fromEntries(players.map((player,seat)=>[`u${seat}`,{...player}]))};
+  const {api}=setup();
+  api.finishCrownPlayer(room,view,'u3',3);
+  assert.equal(room.players.u3.finished,true);
+  assert.equal(room.players.u3.place,4);
+  assert.equal(room.loser,4);
+  assert.equal(api.roundOver({...view,loser:room.loser}),true);
 });
 
 test('Firebase database rules remain valid JSON',()=>{
