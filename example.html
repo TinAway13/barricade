@@ -112,10 +112,10 @@
       const code=payload.room.toUpperCase(),ref=db.ref(`rooms/${code}`);let reason='Room not found.';
       const existing=await ref.once('value');
       if(!existing.exists())throw new Error('Room not found. Check the code and try again.');
-      const existingRoom=existing.val(),existingPlayers=Object.values(existingRoom.players||{});
+      const existingRoom=existing.val(),existingPlayers=Object.values(existingRoom.players||{}),cachedRoom=JSON.parse(JSON.stringify(existingRoom));
       if(!existingRoom.players?.[currentUser.uid]&&(existingRoom.started||existingPlayers.length>=existingRoom.maxPlayers))throw new Error('This room is already full or playing.');
       const result=await ref.transaction(room=>{
-        if(!room){reason='This room was closed while you were joining.';return}
+        room=room||JSON.parse(JSON.stringify(cachedRoom));
         room.players=room.players||{};
         if(room.players[currentUser.uid]){room.players[currentUser.uid].connected=true;room.players[currentUser.uid].name=savedName();return room}
         const players=Object.values(room.players);
