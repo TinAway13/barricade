@@ -37,7 +37,7 @@ test('classic multiplayer and Crown mode use the correct goals',()=>{
   assert.equal(api.atGoal(2,{x:8,y:4},{mode:'classic',maxPlayers:4}),true);
   assert.equal(api.atGoal(3,{x:0,y:4},{mode:'classic',maxPlayers:4}),true);
   assert.equal(api.atGoal(3,{x:4,y:4},{mode:'classic',maxPlayers:4}),false);
-  assert.equal(api.atGoal(4,{x:5,y:5},{mode:'crown',maxPlayers:5}),true);
+  for(let seat=0;seat<5;seat++)assert.equal(api.atGoal(seat,{x:5,y:5},{mode:'crown',maxPlayers:5}),true,`Crown seat ${seat} can win`);
   assert.equal(api.atGoal(4,{x:4,y:1},{mode:'crown',maxPlayers:5}),false);
   assert.equal(api.boardSize({maxPlayers:5}),11);
   assert.equal(api.wallsPerPlayer(5,'crown'),8);
@@ -121,6 +121,31 @@ test('a wall between consecutive players stops the chain jump',()=>{
   ],walls=[{x:3,y:6,orientation:'h',owner:3}];
   const {api,state}=setup({mode:'classic',maxPlayers:4,players,walls});
   assert.equal(api.legalMoves(0,state).some(move=>move.x===4&&move.y===5),false);
+});
+
+test('a pawn can detour around a blocking pawn at the board edge',()=>{
+  const players=[
+    {seat:0,name:'Blue',connected:true,walls:5,pawn:{x:4,y:1}},
+    {seat:1,name:'Green',connected:true,walls:5,pawn:{x:4,y:0}}
+  ];
+  const {api,state}=setup({mode:'classic',maxPlayers:2,players});
+  const moves=api.legalMoves(0,state).map(move=>`${move.x},${move.y}`);
+  assert.ok(moves.includes('3,0'));
+  assert.ok(moves.includes('5,0'));
+});
+
+test('a stopped pawn chain detours around the final blocker',()=>{
+  const players=[
+    {seat:0,name:'P1',connected:true,walls:5,pawn:{x:4,y:8}},
+    {seat:1,name:'P2',connected:true,walls:5,pawn:{x:4,y:7}},
+    {seat:2,name:'P3',connected:true,walls:5,pawn:{x:4,y:6}}
+  ],walls=[{x:3,y:5,orientation:'h',owner:2}];
+  const {api,state}=setup({mode:'classic',maxPlayers:3,players,walls});
+  const moves=api.legalMoves(0,state).map(move=>`${move.x},${move.y}`);
+  assert.ok(moves.includes('3,6'));
+  assert.ok(moves.includes('5,6'));
+  assert.ok(!moves.includes('3,7'));
+  assert.ok(!moves.includes('5,7'));
 });
 
 test('one board chooses moves, horizontal walls and vertical walls from position',()=>{
