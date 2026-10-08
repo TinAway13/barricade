@@ -22,7 +22,7 @@ function setup(overrides={}) {
     addEventListener(){},clearTimeout(){},setTimeout(){},Date,console,__TEST_STATE__:state,
     __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
   sandbox.globalThis=sandbox;
-  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer};'),sandbox);
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor};'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
   const boardEvent=(size,u,v,extra={})=>({clientX:57+u*486/size,clientY:57+v*486/size,pointerType:'mouse',pointerId:1,...extra});
   return {handlers,sent,event,boardEvent,state,elements,api:sandbox.__TEST_API__};
@@ -92,6 +92,12 @@ test('touch slides to a wall, releases once, and suppresses the compatibility cl
   handlers.pointerup(event(3.5,4,touch));handlers.click(event(3.5,4,touch));
   assert.deepEqual(sent,[{type:'wall',x:3,y:3,orientation:'h'}]);
 });
+test('a quick touch near a gap does not accidentally place a wall',()=>{
+  const {handlers,sent,event}=setup(),touch={pointerType:'touch'};
+  handlers.pointerdown(event(3.5,4,touch));handlers.pointerup(event(3.5,4,touch));
+  handlers.pointerdown(event(4.5,7.5,touch));handlers.pointerup(event(4.5,7.5,touch));
+  assert.deepEqual(sent,[{type:'move',x:4,y:7}]);
+});
 test('touch cancellation and releases outside the board never place a wall',()=>{
   const {handlers,sent,event}=setup(),touch={pointerType:'touch'};
   handlers.pointerdown(event(3.5,4,touch));handlers.pointercancel();handlers.pointerup(event(3.5,4,touch));
@@ -112,4 +118,10 @@ test('turn and wall collision checks still reject invalid actions',()=>{
   const blocked=setup({walls:[{x:3,y:3,orientation:'h'}]});blocked.handlers.click(blocked.event(3.5,4));
   const waiting=setup({turn:1});waiting.handlers.click(waiting.event(4.5,7.5));
   assert.equal(blocked.sent.length+waiting.sent.length,0);
+});
+test('placed walls keep the color of their owner',()=>{
+  const {api}=setup();
+  assert.equal(api.wallOwnerColor({owner:0}),'#ff7657');
+  assert.equal(api.wallOwnerColor({owner:4}),'#ffd45f');
+  assert.equal(api.wallOwnerColor({}, {you:2}),'#59d5a7');
 });
