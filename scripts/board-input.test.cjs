@@ -134,7 +134,7 @@ test('a pawn can detour around a blocking pawn at the board edge',()=>{
   assert.ok(moves.includes('5,0'));
 });
 
-test('a stopped pawn chain detours around the final blocker',()=>{
+test('a stopped pawn chain exposes open sides around every connected pawn',()=>{
   const players=[
     {seat:0,name:'P1',connected:true,walls:5,pawn:{x:4,y:8}},
     {seat:1,name:'P2',connected:true,walls:5,pawn:{x:4,y:7}},
@@ -144,8 +144,30 @@ test('a stopped pawn chain detours around the final blocker',()=>{
   const moves=api.legalMoves(0,state).map(move=>`${move.x},${move.y}`);
   assert.ok(moves.includes('3,6'));
   assert.ok(moves.includes('5,6'));
-  assert.ok(!moves.includes('3,7'));
-  assert.ok(!moves.includes('5,7'));
+  assert.ok(moves.includes('3,7'));
+  assert.ok(moves.includes('5,7'));
+});
+
+test('a connected pawn chain can turn a corner',()=>{
+  const players=[
+    {seat:0,name:'Me',connected:true,walls:5,pawn:{x:4,y:8}},
+    {seat:1,name:'Front',connected:true,walls:5,pawn:{x:4,y:7}},
+    {seat:2,name:'Front right',connected:true,walls:5,pawn:{x:5,y:7}}
+  ];
+  const {api,state}=setup({mode:'classic',maxPlayers:3,players,walls:[]});
+  const moves=api.legalMoves(0,state).map(move=>`${move.x},${move.y}`);
+  assert.ok(moves.includes('5,6'));
+});
+
+test('a wall breaks a connected pawn route',()=>{
+  const players=[
+    {seat:0,name:'Me',connected:true,walls:5,pawn:{x:4,y:8}},
+    {seat:1,name:'Front',connected:true,walls:5,pawn:{x:4,y:7}},
+    {seat:2,name:'Front right',connected:true,walls:5,pawn:{x:5,y:7}}
+  ],walls=[{x:4,y:6,orientation:'v',owner:1}];
+  const {api,state}=setup({mode:'classic',maxPlayers:3,players,walls});
+  const moves=api.legalMoves(0,state).map(move=>`${move.x},${move.y}`);
+  assert.ok(!moves.includes('5,6'));
 });
 
 test('one board chooses moves, horizontal walls and vertical walls from position',()=>{
