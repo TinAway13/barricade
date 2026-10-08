@@ -1,28 +1,77 @@
-# Vercel deployment
+# Deploy Blockline with Firebase Realtime Database + Vercel
 
-The frontend is built from `example.html` into `dist/index.html`, fixing the missing homepage in a static deployment. `vercel.json` selects the build and output directory. Set the Vercel project Root Directory to this repository directory and Framework Preset to Other. Commit/push the changes and redeploy.
+เกมเวอร์ชันนี้เป็น static HTML/CSS/JavaScript บน Vercel และใช้ Firebase โดยตรง:
 
-## Multiplayer backend
+- Firebase Anonymous Authentication ระบุตัวผู้เล่น
+- Firebase Realtime Database ซิงก์ห้อง ผู้เล่น ตาเดิน ตัวหมาก และกำแพง
+- Realtime Database transaction ป้องกันผู้เล่นสองคนเขียนสถานะห้องชนกัน
+- ไม่มี Go WebSocket server และไม่มี `BLOCKLINE_WS_URL` แล้ว
 
-The Go program is a persistent WebSocket server. Rooms and connected players live in one process's memory. The frontend build does not deploy this process.
+## 1. สร้างและตั้งค่า Firebase
 
-Run the Go backend on a host that supports a continuously running process and WebSockets, with HTTPS enabled:
+1. สร้าง Firebase project ที่ <https://console.firebase.google.com/>.
+2. Project overview → Add app → Web (`</>`) แล้ว Register app.
+3. Build → Realtime Database → Create Database เลือก region ที่ใกล้ผู้เล่น และเริ่มแบบ Locked mode.
+4. Build → Authentication → Sign-in method → เปิด **Anonymous**.
+5. Authentication → Settings → Authorized domains → เพิ่ม production domain ของ Vercel เช่น `your-game.vercel.app` และ custom domain (ถ้ามี).
+6. ติดตั้ง Firebase CLI แล้ว deploy rules ในไฟล์ `database.rules.json`:
 
+   ```bash
+   npm install -g firebase-tools
+   firebase login
+   firebase use --add
+   firebase deploy --only database
+   ```
+
+   หรือคัดลอกเนื้อหา `database.rules.json` ไปที่ Realtime Database → Rules แล้วกด Publish.
+
+อย่าใช้ Test mode หรือ rules ที่เป็น `.read: true, .write: true` บน production.
+
+## 2. Firebase config ที่ต้องใช้
+
+ไปที่ Project settings → General → Your apps → Web app → SDK setup and configuration → Config แล้วนำค่าต่อไปนี้มาใช้:
+
+| Firebase config | Vercel Environment Variable | จำเป็น |
+| --- | --- | --- |
+| `apiKey` | `FIREBASE_API_KEY` | ใช่ |
+| `authDomain` | `FIREBASE_AUTH_DOMAIN` | ใช่ |
+| `databaseURL` | `FIREBASE_DATABASE_URL` | ใช่ |
+| `projectId` | `FIREBASE_PROJECT_ID` | ใช่ |
+| `appId` | `FIREBASE_APP_ID` | ใช่ |
+| `storageBucket` | `FIREBASE_STORAGE_BUCKET` | ไม่จำเป็นสำหรับเกมนี้ |
+| `messagingSenderId` | `FIREBASE_MESSAGING_SENDER_ID` | ไม่จำเป็นสำหรับเกมนี้ |
+
+`databaseURL` ต้องเป็น URL ของ Realtime Database ตัวจริง เช่น:
+
+```text
+https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app
 ```
-go build -o blockline .
-./blockline
+
+Firebase Web config เป็นข้อมูล public identifier ที่ถูกส่งไป browser อยู่แล้ว ความปลอดภัยต้องมาจาก Authentication และ Database Rules ห้ามนำ service-account JSON, `private_key`, refresh token หรือ Firebase Admin credentials ใส่ใน frontend หรือส่งให้ผู้อื่น.
+
+## 3. ตั้งค่า Vercel
+
+1. Import repository เข้า Vercel.
+2. Project Settings → Build and Deployment:
+   - Framework Preset: **Other**
+   - Build Command: ใช้ค่าจาก `vercel.json` (`node scripts/build-vercel.cjs`)
+   - Output Directory: ใช้ค่าจาก `vercel.json` (`dist`)
+3. Project Settings → Environment Variables เพิ่มตัวแปร Firebase ตามตารางด้านบน.
+4. เลือก Environment อย่างน้อย **Production** และ **Preview** (Development ด้วยถ้าใช้ `vercel dev`).
+5. Redeploy หลังเพิ่มหรือแก้ environment variables เพราะค่าใหม่ไม่มีผลกับ deployment เก่า.
+
+Build script จะหยุด deploy ทันทีหากตัวแปรที่จำเป็นขาด และจะฝังเฉพาะ Firebase Web config ลงใน `dist/index.html`.
+
+## 4. ทดสอบ build ก่อน deploy
+
+ตั้งค่าตัวแปรตาม `.env.example` แล้วรัน:
+
+```bash
+node scripts/build-vercel.cjs
 ```
 
-It reads `PORT` (default 8080). Keep a single running instance: multiple independent instances do not share rooms. Restarting it clears matches.
+จากนั้น serve โฟลเดอร์ `dist` ด้วย static server ห้ามเปิด `example.html` ตรงผ่าน `file://` เพราะ Firebase Auth ต้องทำงานบน authorized web origin.
 
-In Vercel Project Settings → Environment Variables, set `BLOCKLINE_WS_URL` to the backend's public WebSocket endpoint, for example `wss://your-backend.example/ws`. This is public client configuration, not a secret. Redeploy after changing it. Without it the page loads and displays that online play is not configured.
+## Security note
 
-Vercel's WebSocket support does not by itself make this in-memory Go server a distributed backend. A Vercel-only backend needs an appropriate runtime entrypoint and shared storage/coordination for rooms: https://vercel.com/docs/functions/websockets#manage-persistent-state
-
-## Local development
-
-Run `go run .` and visit `http://localhost:8080`. The source page connects to `/ws` on the same host; no environment variable is needed locally.
-
-## Board interaction
-
-Click or tap a glowing tile center to move. Hover near an internal tile edge to preview a wall; its direction follows that edge automatically. Click the gap to place it. On touch screens, hold and slide on the board to preview, then release to place. Release outside the board to cancel. Placed walls cannot be moved.
+Rules ที่ให้มาบังคับให้ผู้ใช้ sign in แบบ anonymous, จำกัดโครงสร้างข้อมูล/จำนวนผู้เล่น/ขอบเขตพิกัด และอนุญาตเขียนเฉพาะสมาชิกห้อง อย่างไรก็ตามกติกากระดานที่ซับซ้อนถูกตรวจใน transaction ฝั่ง client ดังนั้นผู้ใช้ที่แก้ JavaScript ผ่าน DevTools ยังอาจพยายามโกงได้ ถ้าต้องการ ranked/competitive mode ให้ย้ายการตรวจ move และ wall ไป Firebase Cloud Functions หรือ trusted server แล้วปิดสิทธิ์เขียน game state โดยตรงจาก client.

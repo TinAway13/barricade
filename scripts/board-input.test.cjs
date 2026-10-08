@@ -6,28 +6,25 @@ const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, '..', 'example.html'), 'utf8');
 const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
-function setup() {
+function setup(overrides={}) {
   const handlers = {}, sent = [], elements = new Map();
   const ctx = new Proxy({}, { get: (_, name) => name.startsWith('create') ? () => ({addColorStop(){}}) : () => {} });
   const element = () => ({ value:'', content:'', style:{}, classList:{add(){},remove(){},toggle(){}},
     querySelector:()=>element(), appendChild(){}, addEventListener(){}, getContext:()=>ctx,
     getBoundingClientRect:()=>({left:0,top:0,width:600,height:600}), setPointerCapture(){}, hasPointerCapture:()=>true, releasePointerCapture(){} });
   const board=element();board.addEventListener=(name,fn)=>handlers[name]=fn;elements.set('board',board);
-  class WebSocket {
-    static OPEN=1;
-    constructor(){this.readyState=1;WebSocket.instance=this}
-    send(message){sent.push(JSON.parse(message))}
-  }
-  const sandbox={document:{getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)},querySelector:()=>element(),querySelectorAll:()=>[],createElement:element},
-    WebSocket,localStorage:{getItem:()=>null,setItem(){}},location:{protocol:'http:',host:'localhost',hash:''},
-    ResizeObserver:class{constructor(callback){this.callback=callback}observe(){this.callback()}},devicePixelRatio:1,
-    addEventListener(){},clearTimeout(){},setTimeout(){},Date,console};
-  vm.runInNewContext(source,sandbox);
   const state={type:'state',room:'ABCDE',maxPlayers:2,started:true,winner:-1,turn:0,you:0,host:true,walls:null,
     players:[{seat:0,name:'Host',connected:true,walls:10,pawn:{x:4,y:8}},{seat:1,name:'Guest',connected:true,walls:10,pawn:{x:4,y:0}}]};
-  WebSocket.instance.onmessage({data:JSON.stringify(state)});
+  Object.assign(state,overrides);
+  const sandbox={document:{getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)},querySelector:()=>element(),querySelectorAll:()=>[],createElement:element},
+    localStorage:{getItem:()=>null,setItem(){}},location:{protocol:'http:',host:'localhost',hash:''},
+    ResizeObserver:class{constructor(callback){this.callback=callback}observe(){this.callback()}},devicePixelRatio:1,
+    addEventListener(){},clearTimeout(){},setTimeout(){},Date,console,__TEST_STATE__:state,
+    __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
+  sandbox.globalThis=sandbox;
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
-  return {handlers,sent,event,state,ws:WebSocket.instance};
+  return {handlers,sent,event,state};
 }
 
 test('one board chooses moves, horizontal walls and vertical walls from position',()=>{
@@ -55,8 +52,7 @@ test('outermost tile edges map to valid two-tile wall anchors',()=>{
   assert.deepEqual(sent,[{type:'wall',x:7,y:7,orientation:'h'},{type:'wall',x:7,y:7,orientation:'v'}]);
 });
 test('turn and wall collision checks still reject invalid actions',()=>{
-  const {handlers,sent,event,state,ws}=setup();
-  state.walls=[{x:3,y:3,orientation:'h'}];ws.onmessage({data:JSON.stringify(state)});handlers.click(event(3.5,4));
-  state.turn=1;ws.onmessage({data:JSON.stringify(state)});handlers.click(event(4.5,7.5));
-  assert.equal(sent.length,0);
+  const blocked=setup({walls:[{x:3,y:3,orientation:'h'}]});blocked.handlers.click(blocked.event(3.5,4));
+  const waiting=setup({turn:1});waiting.handlers.click(waiting.event(4.5,7.5));
+  assert.equal(blocked.sent.length+waiting.sent.length,0);
 });
