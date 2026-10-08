@@ -56,6 +56,8 @@ type Client struct {
 	player *Player
 }
 
+// test
+
 type clientMessage struct {
 	Type        string `json:"type"`
 	Name        string `json:"name"`
