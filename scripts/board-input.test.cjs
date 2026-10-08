@@ -78,6 +78,38 @@ test('Crown host can start before all five seats are filled',()=>{
   assert.deepEqual(sent,[{type:'new_round'}]);
 });
 
+test('host can restart a round before it is finished',()=>{
+  const {elements,sent}=setup({host:true,started:true,winner:-1});
+  const button=elements.get('newRoundBtn');
+  assert.equal(button.disabled,false);
+  assert.equal(button.textContent,'New round');
+  button.onclick();
+  assert.deepEqual(sent,[{type:'new_round'}]);
+});
+
+test('a pawn can jump across multiple consecutive players',()=>{
+  const players=[
+    {seat:0,name:'P1',connected:true,walls:5,pawn:{x:4,y:8}},
+    {seat:1,name:'P2',connected:true,walls:5,pawn:{x:4,y:7}},
+    {seat:2,name:'P3',connected:true,walls:5,pawn:{x:4,y:6}},
+    {seat:3,name:'P4',connected:true,walls:5,pawn:{x:8,y:4}}
+  ];
+  const {handlers,sent,event}=setup({mode:'classic',maxPlayers:4,players});
+  handlers.click(event(4.5,5.5));
+  assert.deepEqual(sent,[{type:'move',x:4,y:5}]);
+});
+
+test('a wall between consecutive players stops the chain jump',()=>{
+  const players=[
+    {seat:0,name:'P1',connected:true,walls:5,pawn:{x:4,y:8}},
+    {seat:1,name:'P2',connected:true,walls:5,pawn:{x:4,y:7}},
+    {seat:2,name:'P3',connected:true,walls:5,pawn:{x:4,y:6}},
+    {seat:3,name:'P4',connected:true,walls:5,pawn:{x:8,y:4}}
+  ],walls=[{x:3,y:6,orientation:'h',owner:3}];
+  const {api,state}=setup({mode:'classic',maxPlayers:4,players,walls});
+  assert.equal(api.legalMoves(0,state).some(move=>move.x===4&&move.y===5),false);
+});
+
 test('one board chooses moves, horizontal walls and vertical walls from position',()=>{
   const {handlers,sent,event}=setup();
   handlers.click(event(4.5,7.5));
