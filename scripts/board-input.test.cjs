@@ -93,7 +93,8 @@ test('the final Crown player is declared the loser',()=>{
 test('Firebase database rules remain valid JSON',()=>{
   const rules=JSON.parse(fs.readFileSync(path.join(__dirname,'..','database.rules.json'),'utf8'));
   assert.equal(rules.rules.rooms['.read'],'auth != null');
-  assert.ok(rules.rules.rooms.$room.treasures.$treasure['.validate'].includes("turn').val() >= 10"));
+  assert.ok(rules.rules.rooms.$room.treasureStartTurn['.validate'].includes('newData.val() >= 1'));
+  assert.ok(rules.rules.rooms.$room.treasureEveryTurns['.validate'].includes('newData.val() >= 1'));
 });
 
 test('treasure starts on turn 10, repeats every 5 turns, and stays on the outer edge',()=>{
@@ -109,6 +110,21 @@ test('treasure starts on turn 10, repeats every 5 turns, and stays on the outer 
   assert.equal(room.treasures.length,1);
   room.turnNumber=15;api.maybeSpawnTreasure(room,view);
   assert.equal(room.treasures.length,2);
+});
+
+test('room treasure settings control the first spawn and repeat interval',()=>{
+  const {api}=setup(),players=[{seat:0,connected:true,finished:false,pawn:{x:4,y:8}},{seat:1,connected:true,finished:false,pawn:{x:4,y:0}}],view={mode:'classic',maxPlayers:2,players};
+  const room={maxPlayers:2,treasureStartTurn:3,treasureEveryTurns:2,turnNumber:2,players:{a:{...players[0]},b:{...players[1]}},treasures:[]};
+  api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,0);
+  room.turnNumber=3;api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,1);
+  assert.equal(room.treasures[0].turn,3);
+  room.turnNumber=4;api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,1);
+  room.turnNumber=5;api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,2);
+  assert.equal(room.treasures[1].turn,5);
 });
 
 test('landing on treasure collects its item',()=>{
