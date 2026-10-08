@@ -110,8 +110,12 @@
     }
     async function joinRoom(payload){
       const code=payload.room.toUpperCase(),ref=db.ref(`rooms/${code}`);let reason='Room not found.';
+      const existing=await ref.once('value');
+      if(!existing.exists())throw new Error('Room not found. Check the code and try again.');
+      const existingRoom=existing.val(),existingPlayers=Object.values(existingRoom.players||{});
+      if(!existingRoom.players?.[currentUser.uid]&&(existingRoom.started||existingPlayers.length>=existingRoom.maxPlayers))throw new Error('This room is already full or playing.');
       const result=await ref.transaction(room=>{
-        if(!room){reason='Room not found.';return}
+        if(!room){reason='This room was closed while you were joining.';return}
         room.players=room.players||{};
         if(room.players[currentUser.uid]){room.players[currentUser.uid].connected=true;room.players[currentUser.uid].name=savedName();return room}
         const players=Object.values(room.players);
@@ -167,7 +171,7 @@
     function atGoal(seat,p){return seat===0?p.y===0:seat===1?p.y===8:seat===2?p.x===8:p.x===0}
     function randomRoomCode(){const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',bytes=crypto.getRandomValues(new Uint8Array(5));return Array.from(bytes,b=>chars[b%chars.length]).join('')}
     function toArray(value){return Array.isArray(value)?value.filter(Boolean):value&&typeof value==='object'?Object.values(value):[]}
-    function firebaseError(error){if(error?.code==='auth/operation-not-allowed')return'Enable Anonymous sign-in in Firebase Authentication.';if(error?.code==='PERMISSION_DENIED'||error?.code==='database/permission-denied')return'Firebase denied this request. Publish database.rules.json and check Authentication.';return error?.message?.replace(/^Firebase:\s*/,'')||'Firebase request failed.'}
+    function firebaseError(error){const code=String(error?.code||'').toLowerCase(),message=String(error?.message||'');if(code==='auth/operation-not-allowed')return'Enable Anonymous sign-in in Firebase Authentication.';if(code.includes('permission_denied')||code.includes('permission-denied')||message.toLowerCase().includes('permission_denied')||message.toLowerCase().includes('permission denied'))return'Firebase denied this request. Publish database.rules.json to the Realtime Database instance used by FIREBASE_DATABASE_URL.';return message.replace(/^Firebase:\s*/,'')||'Firebase request failed.'}
     function savedName(){const name=ui.name.value.trim()||localStorage.getItem('blockline-name')||'Player';localStorage.setItem('blockline-name',name);return name}
 
     function renderPlayers(){
