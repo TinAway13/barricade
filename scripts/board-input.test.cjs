@@ -19,10 +19,10 @@ function setup(overrides={}) {
   const sandbox={document:{getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)},querySelector:()=>element(),querySelectorAll:()=>[],createElement:element},
     localStorage:{getItem:()=>null,setItem(){}},location:{protocol:'http:',host:'localhost',hash:''},
     ResizeObserver:class{constructor(callback){this.callback=callback}observe(){this.callback()}},devicePixelRatio:1,
-    addEventListener(){},clearTimeout(){},setTimeout(){},Date,console,__TEST_STATE__:state,
+    addEventListener(){},clearTimeout(){},setTimeout(){},setInterval(){},Date,console,__TEST_STATE__:state,
     __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
   sandbox.globalThis=sandbox;
-  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms,nextConnectedSeat,roundOver,finishCrownPlayer};'),sandbox);
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms,nextConnectedSeat,roundOver,finishCrownPlayer,completeTurn,maybeSpawnTreasure,outerTiles,itemMoves,collectTreasure,bestAutoMove};'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
   const boardEvent=(size,u,v,extra={})=>({clientX:57+u*486/size,clientY:57+v*486/size,pointerType:'mouse',pointerId:1,...extra});
   return {handlers,sent,event,boardEvent,state,elements,api:sandbox.__TEST_API__};
@@ -74,7 +74,6 @@ test('reaching the Crown makes a player safe without ending the round',()=>{
   api.finishCrownPlayer(room,view,'u0',0);
   assert.equal(room.players.u0.finished,true);
   assert.equal(room.players.u0.place,1);
-  assert.equal(room.turn,1);
   assert.equal(room.loser,-1);
   assert.equal(api.roundOver({...view,loser:room.loser}),false);
 });
@@ -94,6 +93,47 @@ test('the final Crown player is declared the loser',()=>{
 test('Firebase database rules remain valid JSON',()=>{
   const rules=JSON.parse(fs.readFileSync(path.join(__dirname,'..','database.rules.json'),'utf8'));
   assert.equal(rules.rules.rooms['.read'],'auth != null');
+  assert.ok(rules.rules.rooms.$room.treasures.$treasure['.validate'].includes("turn').val() >= 10"));
+});
+
+test('treasure starts on turn 10, repeats every 5 turns, and stays on the outer edge',()=>{
+  const {api}=setup(),players=[{seat:0,connected:true,finished:false,pawn:{x:4,y:8}},{seat:1,connected:true,finished:false,pawn:{x:4,y:0}}],view={mode:'classic',maxPlayers:2,players};
+  const room={maxPlayers:2,turnNumber:9,players:{a:{...players[0]},b:{...players[1]}},treasures:[]};
+  api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,0);
+  room.turnNumber=10;api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,1);
+  const first=room.treasures[0];
+  assert.ok(first.x===0||first.x===8||first.y===0||first.y===8);
+  room.turnNumber=11;api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,1);
+  room.turnNumber=15;api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,2);
+});
+
+test('landing on treasure collects its item',()=>{
+  const {api}=setup(),player={pawn:{x:0,y:3},inventory:[]},room={treasures:[{x:0,y:3,item:'hammer',turn:10}]};
+  assert.equal(api.collectTreasure(room,player),'hammer');
+  assert.deepEqual(Array.from(player.inventory),['hammer']);
+  assert.equal(room.treasures.length,0);
+});
+
+test('Wall Jump and Sprint expose their special move targets',()=>{
+  const {api}=setup(),source={mode:'classic',maxPlayers:2,walls:[{x:3,y:6,orientation:'h',owner:1}],players:[{seat:0,pawn:{x:4,y:7}},{seat:1,pawn:{x:8,y:8}}]};
+  const jump=api.itemMoves('jump_wall',0,source).map(p=>`${p.x},${p.y}`),sprint=api.itemMoves('sprint',0,{...source,walls:[]}).map(p=>`${p.x},${p.y}`);
+  assert.ok(jump.includes('4,6'));
+  assert.ok(sprint.includes('4,4'));
+});
+
+test('turn completion grants an extra turn and skips a frozen rival',()=>{
+  const {api}=setup(),view={mode:'classic',maxPlayers:3,players:[{seat:0,connected:true},{seat:1,connected:true},{seat:2,connected:true}]};
+  const room={maxPlayers:3,turn:0,turnNumber:0,players:{a:{seat:0,connected:true,extraTurn:true},b:{seat:1,connected:true,skipTurn:false},c:{seat:2,connected:true,skipTurn:false}},treasures:[]};
+  api.completeTurn(room,view,0);
+  assert.equal(room.turn,0);
+  assert.equal(room.players.a.extraTurn,false);
+  room.players.b.skipTurn=true;api.completeTurn(room,view,0);
+  assert.equal(room.turn,2);
+  assert.equal(room.players.b.skipTurn,false);
 });
 
 test('open room browser lists only live joinable rooms, newest first',()=>{

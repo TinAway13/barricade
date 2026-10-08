@@ -13,14 +13,37 @@
         "loser": {
           ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() < 5"
         },
+        "turnSeconds": {
+          ".validate": "newData.isNumber() && (newData.val() === 15 || newData.val() === 30 || newData.val() === 45 || newData.val() === 60)"
+        },
+        "turnStartedAt": {
+          ".validate": "newData.isNumber() && newData.val() > 0"
+        },
+        "turnNumber": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
         "players": {
           "$uid": {
-            ".validate": "newData.exists() === false || (newData.hasChildren(['name','seat','connected','walls','pawn']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 18 && newData.child('seat').isNumber() && newData.child('seat').val() >= 0 && newData.child('seat').val() < 5 && newData.child('connected').isBoolean() && newData.child('walls').isNumber() && newData.child('walls').val() >= 0 && newData.child('walls').val() <= 10)",
+            ".validate": "newData.exists() === false || (newData.hasChildren(['name','seat','connected','walls','pawn']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 18 && newData.child('seat').isNumber() && newData.child('seat').val() >= 0 && newData.child('seat').val() < 5 && newData.child('connected').isBoolean() && newData.child('walls').isNumber() && newData.child('walls').val() >= 0 && newData.child('walls').val() <= 12)",
             "finished": {
               ".validate": "newData.isBoolean()"
             },
             "place": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5"
+            },
+            "extraTurn": {
+              ".validate": "newData.isBoolean()"
+            },
+            "skipTurn": {
+              ".validate": "newData.isBoolean()"
+            },
+            "shield": {
+              ".validate": "newData.isBoolean()"
+            },
+            "inventory": {
+              "$item": {
+                ".validate": "newData.isString() && (newData.val() === 'jump_wall' || newData.val() === 'sprint' || newData.val() === 'hammer' || newData.val() === 'wall_pack' || newData.val() === 'extra_turn' || newData.val() === 'freeze' || newData.val() === 'teleport' || newData.val() === 'shield' || newData.val() === 'swap' || newData.val() === 'compass')"
+              }
             },
             "pawn": {
               ".validate": "newData.hasChildren(['x','y']) && newData.child('x').isNumber() && newData.child('x').val() >= 0 && newData.child('x').val() <= 10 && newData.child('y').isNumber() && newData.child('y').val() >= 0 && newData.child('y').val() <= 10"
@@ -30,6 +53,11 @@
         "walls": {
           "$wall": {
             ".validate": "newData.hasChildren(['x','y','orientation','owner']) && newData.child('x').isNumber() && newData.child('x').val() >= 0 && newData.child('x').val() <= 9 && newData.child('y').isNumber() && newData.child('y').val() >= 0 && newData.child('y').val() <= 9 && newData.child('orientation').isString() && (newData.child('orientation').val() === 'h' || newData.child('orientation').val() === 'v') && newData.child('owner').isNumber() && newData.child('owner').val() >= 0 && newData.child('owner').val() < 5"
+          }
+        },
+        "treasures": {
+          "$treasure": {
+            ".validate": "newData.hasChildren(['x','y','item','turn']) && newData.child('x').isNumber() && newData.child('x').val() >= 0 && newData.child('x').val() <= 10 && newData.child('y').isNumber() && newData.child('y').val() >= 0 && newData.child('y').val() <= 10 && (newData.child('x').val() === 0 || newData.child('y').val() === 0 || (root.child('rooms').child($room).child('maxPlayers').val() === 5 && (newData.child('x').val() === 10 || newData.child('y').val() === 10)) || (root.child('rooms').child($room).child('maxPlayers').val() !== 5 && (newData.child('x').val() === 8 || newData.child('y').val() === 8))) && newData.child('item').isString() && (newData.child('item').val() === 'jump_wall' || newData.child('item').val() === 'sprint' || newData.child('item').val() === 'hammer' || newData.child('item').val() === 'wall_pack' || newData.child('item').val() === 'extra_turn' || newData.child('item').val() === 'freeze' || newData.child('item').val() === 'teleport' || newData.child('item').val() === 'shield' || newData.child('item').val() === 'swap' || newData.child('item').val() === 'compass') && newData.child('turn').isNumber() && newData.child('turn').val() >= 10"
           }
         }
       }
