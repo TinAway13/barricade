@@ -3,8 +3,8 @@
     ".read": false,
     ".write": false,
     "rooms": {
+      ".read": "auth != null",
       "$room": {
-        ".read": "auth != null",
         ".write": "auth != null && ((data.exists() === false && newData.child('hostUid').val() === auth.uid) || (data.exists() && (data.child('players').child(auth.uid).exists() || (data.child('started').val() === false && newData.child('players').child(auth.uid).exists()))))",
         ".validate": "newData.exists() === false || (newData.hasChildren(['maxPlayers','hostUid','started','turn','winner','players','createdAt','updatedAt']) && newData.child('maxPlayers').isNumber() && newData.child('maxPlayers').val() >= 2 && newData.child('maxPlayers').val() <= 5 && (!newData.child('mode').exists() || (newData.child('mode').isString() && (newData.child('mode').val() === 'classic' || newData.child('mode').val() === 'crown'))) && (newData.child('maxPlayers').val() !== 5 || newData.child('mode').val() === 'crown') && newData.child('hostUid').isString() && (data.exists() === false || newData.child('hostUid').val() === data.child('hostUid').val()) && newData.child('started').isBoolean() && newData.child('turn').isNumber() && newData.child('turn').val() >= 0 && newData.child('turn').val() < newData.child('maxPlayers').val() && newData.child('winner').isNumber() && newData.child('winner').val() >= -1 && newData.child('winner').val() < newData.child('maxPlayers').val() && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber())",
         "mode": {

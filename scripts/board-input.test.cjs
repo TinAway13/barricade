@@ -22,7 +22,7 @@ function setup(overrides={}) {
     addEventListener(){},clearTimeout(){},setTimeout(){},Date,console,__TEST_STATE__:state,
     __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
   sandbox.globalThis=sandbox;
-  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor};'),sandbox);
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms};'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
   const boardEvent=(size,u,v,extra={})=>({clientX:57+u*486/size,clientY:57+v*486/size,pointerType:'mouse',pointerId:1,...extra});
   return {handlers,sent,event,boardEvent,state,elements,api:sandbox.__TEST_API__};
@@ -65,7 +65,20 @@ test('Crown rounds randomize five unique non-corner edge spawns',()=>{
 });
 
 test('Firebase database rules remain valid JSON',()=>{
-  assert.doesNotThrow(()=>JSON.parse(fs.readFileSync(path.join(__dirname,'..','database.rules.json'),'utf8')));
+  const rules=JSON.parse(fs.readFileSync(path.join(__dirname,'..','database.rules.json'),'utf8'));
+  assert.equal(rules.rules.rooms['.read'],'auth != null');
+});
+
+test('open room browser lists only live joinable rooms, newest first',()=>{
+  const {api}=setup(),player=(connected=true)=>({connected});
+  const rooms={
+    OLD:{maxPlayers:2,started:false,updatedAt:10,players:{a:player()}},
+    NEW:{maxPlayers:5,started:false,updatedAt:30,players:{a:player(),b:player()}},
+    PLAYING:{maxPlayers:4,started:true,updatedAt:40,players:{a:player()}},
+    FULL:{maxPlayers:2,started:false,updatedAt:50,players:{a:player(),b:player()}},
+    EMPTY:{maxPlayers:3,started:false,updatedAt:60,players:{a:player(false)}}
+  };
+  assert.deepEqual(Array.from(api.joinableRooms(rooms),room=>room.code),['NEW','OLD']);
 });
 
 test('Crown host can start before all five seats are filled',()=>{
