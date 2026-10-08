@@ -138,6 +138,9 @@ func TestWebSocketRoomLifecycle(t *testing.T) {
 	if !hostState.Started || len(hostState.Players) != 2 || hostState.You != 0 {
 		t.Fatalf("host did not receive started game: %#v", hostState)
 	}
+	if hostState.Walls == nil {
+		t.Fatal("started game must serialize an empty wall list as [] instead of null")
+	}
 
 	if err := host.WriteJSON(clientMessage{Type: "wall", X: 3, Y: 3, Orientation: "h"}); err != nil {
 		t.Fatal(err)

@@ -397,7 +397,7 @@ func (r *Room) prepareSeatsLocked() {
 
 func (r *Room) resetGameLocked() {
 	r.Pawns = startingPawns(r.MaxPlayers)
-	r.Walls = nil
+	r.Walls = []Wall{}
 	r.WallsLeft = make([]int, r.MaxPlayers)
 	for i := range r.WallsLeft {
 		r.WallsLeft[i] = wallsPerPlayer(r.MaxPlayers)
@@ -570,7 +570,7 @@ func (r *Room) broadcastLocked() {
 			}
 			players = append(players, playerView{Name: p.Name, Seat: p.Seat, Color: colorForSeat(p.Seat), Connected: p.Connected, Walls: walls, Pawn: pawn})
 		}
-		message := stateMessage{Type: "state", Room: r.Code, MaxPlayers: r.MaxPlayers, Started: r.Started, Turn: r.Turn, Winner: r.Winner, You: recipient.Seat, Host: recipient.Seat == 0, Token: recipient.Token, Players: players, Walls: append([]Wall(nil), r.Walls...)}
+		message := stateMessage{Type: "state", Room: r.Code, MaxPlayers: r.MaxPlayers, Started: r.Started, Turn: r.Turn, Winner: r.Winner, You: recipient.Seat, Host: recipient.Seat == 0, Token: recipient.Token, Players: players, Walls: append([]Wall{}, r.Walls...)}
 		select {
 		case recipient.Client.send <- message:
 		default:
