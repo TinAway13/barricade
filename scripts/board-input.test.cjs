@@ -22,10 +22,50 @@ function setup(overrides={}) {
     addEventListener(){},clearTimeout(){},setTimeout(){},Date,console,__TEST_STATE__:state,
     __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
   sandbox.globalThis=sandbox;
-  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);'),sandbox);
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn};'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
-  return {handlers,sent,event,state};
+  const pointEvent=(x,y,extra={})=>({clientX:x,clientY:y,pointerType:'mouse',pointerId:1,...extra});
+  return {handlers,sent,event,pointEvent,state,elements,api:sandbox.__TEST_API__};
 }
+
+test('classic multiplayer and pentagon modes use their center goals',()=>{
+  const {api}=setup();
+  assert.equal(api.atGoal(0,{x:4,y:0},{mode:'classic',maxPlayers:2}),true);
+  assert.equal(api.atGoal(0,{x:4,y:0},{mode:'classic',maxPlayers:3}),false);
+  assert.equal(api.atGoal(3,{x:4,y:4},{mode:'classic',maxPlayers:4}),true);
+  assert.equal(api.atGoal(4,{x:5,y:0},{mode:'pentagon',maxPlayers:5}),true);
+  assert.equal(api.atGoal(4,{x:4,y:1},{mode:'pentagon',maxPlayers:5}),false);
+});
+
+test('pentagon mode supports five starts, connected-node moves and edge walls',()=>{
+  const players=Array.from({length:5},(_,seat)=>({seat,name:`P${seat+1}`,connected:true,walls:5,pawn:{x:seat,y:4}}));
+  const {handlers,sent,pointEvent,api}=setup({mode:'pentagon',maxPlayers:5,players});
+  assert.equal(JSON.stringify(Array.from({length:5},(_,seat)=>api.startingPawn(seat,'pentagon'))),JSON.stringify(Array.from({length:5},(_,x)=>({x,y:4}))));
+  handlers.click(pointEvent(300,124.5));
+  handlers.click(pointEvent(300,95));
+  assert.deepEqual(sent,[{type:'move',x:0,y:3},{type:'wall',orientation:'r',x:0,y:4}]);
+});
+
+test('pentagon walls cannot close every route to the center',()=>{
+  const players=[{seat:0,name:'Host',connected:true,walls:5,pawn:{x:0,y:4}}];
+  const walls=Array.from({length:4},(_,x)=>({orientation:'r',x,y:1,owner:0}));
+  const {api,state}=setup({mode:'pentagon',maxPlayers:5,players,walls});
+  assert.equal(api.legalWall({orientation:'r',x:4,y:1},state),false);
+});
+
+test('Firebase database rules remain valid JSON',()=>{
+  assert.doesNotThrow(()=>JSON.parse(fs.readFileSync(path.join(__dirname,'..','database.rules.json'),'utf8')));
+});
+
+test('pentagon host can start before all five seats are filled',()=>{
+  const players=[{seat:0,name:'Host',connected:true,walls:5,pawn:{x:0,y:4}}];
+  const {elements,sent}=setup({mode:'pentagon',maxPlayers:5,started:false,players});
+  const button=elements.get('newRoundBtn');
+  assert.equal(button.disabled,false);
+  assert.equal(button.textContent,'Start match');
+  button.onclick();
+  assert.deepEqual(sent,[{type:'new_round'}]);
+});
 
 test('one board chooses moves, horizontal walls and vertical walls from position',()=>{
   const {handlers,sent,event}=setup();
