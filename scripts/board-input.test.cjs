@@ -9,8 +9,8 @@ const source = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 function setup(overrides={}) {
   const handlers = {}, sent = [], elements = new Map();
   const ctx = new Proxy({}, { get: (_, name) => name.startsWith('create') ? () => ({addColorStop(){}}) : () => {} });
-  const element = () => ({ value:'', content:'', style:{}, classList:{add(){},remove(){},toggle(){}},
-    querySelector:()=>element(), appendChild(){}, addEventListener(){}, getContext:()=>ctx,
+  const element = () => ({ value:'', content:'', style:{}, children:[], classList:{add(){},remove(){},toggle(){}},
+    querySelector:()=>element(), appendChild(child){this.children.push(child)}, addEventListener(){}, getContext:()=>ctx,
     getBoundingClientRect:()=>({left:0,top:0,width:600,height:600}), setPointerCapture(){}, hasPointerCapture:()=>true, releasePointerCapture(){} });
   const board=element();board.addEventListener=(name,fn)=>handlers[name]=fn;elements.set('board',board);
   const state={type:'state',room:'ABCDE',maxPlayers:2,started:true,winner:-1,turn:0,you:0,host:true,walls:null,
@@ -22,7 +22,7 @@ function setup(overrides={}) {
     addEventListener(){},clearTimeout(){},setTimeout(){},setInterval(){},Date,console,__TEST_STATE__:state,
     __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
   sandbox.globalThis=sandbox;
-  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms,nextConnectedSeat,roundOver,finishCrownPlayer,completeTurn,maybeSpawnTreasure,outerTiles,itemMoves,collectTreasure,bestAutoMove};'),sandbox);
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms,nextConnectedSeat,roundOver,finishCrownPlayer,completeTurn,maybeSpawnTreasure,outerTiles,itemMoves,collectTreasure,bestAutoMove,placedWallAt,removeSelectedWall,consumeItem,ITEM_TYPES};'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
   const boardEvent=(size,u,v,extra={})=>({clientX:57+u*486/size,clientY:57+v*486/size,pointerType:'mouse',pointerId:1,...extra});
   return {handlers,sent,event,boardEvent,state,elements,api:sandbox.__TEST_API__};
@@ -132,6 +132,51 @@ test('landing on treasure collects its item',()=>{
   assert.equal(api.collectTreasure(room,player),'hammer');
   assert.deepEqual(Array.from(player.inventory),['hammer']);
   assert.equal(room.treasures.length,0);
+});
+
+test('new treasures never contain Compass and old Compass boxes give a usable item',()=>{
+  const {api}=setup(),player={pawn:{x:0,y:3},inventory:[]},room={treasures:[{x:0,y:3,item:'compass',turn:10}]};
+  assert.equal(api.ITEM_TYPES.includes('compass'),false);
+  assert.equal(api.collectTreasure(room,player),'wall_pack');
+  assert.deepEqual(Array.from(player.inventory),['wall_pack']);
+  const oldInventory={inventory:['hammer','compass']};
+  api.consumeItem(oldInventory,'hammer');
+  assert.deepEqual(Array.from(oldInventory.inventory),['wall_pack']);
+});
+
+test('Hammer targets the chosen horizontal or vertical wall, not the nearest wall',()=>{
+  const walls=[{x:1,y:1,orientation:'h',owner:0},{x:3,y:3,orientation:'h',owner:1},{x:5,y:4,orientation:'v',owner:1}];
+  const {api,event}=setup({walls});
+  const chosen=api.placedWallAt({x:event(4.5,4).clientX,y:event(4.5,4).clientY},walls);
+  const vertical=api.placedWallAt({x:event(6,5.5).clientX,y:event(6,5.5).clientY},walls);
+  assert.equal(chosen.x,3);
+  assert.equal(chosen.orientation,'h');
+  assert.equal(vertical.x,5);
+  assert.equal(vertical.orientation,'v');
+  const room={walls:[...walls]};
+  assert.equal(api.removeSelectedWall(room,{x:chosen.x,y:chosen.y,orientation:chosen.orientation}),true);
+  assert.deepEqual(Array.from(room.walls,w=>`${w.x},${w.y},${w.orientation}`),['1,1,h','5,4,v']);
+  assert.equal(api.removeSelectedWall(room,{x:3,y:3,orientation:'h'}),false);
+});
+
+test('Hammer selection waits for a wall tap before sending an item action',()=>{
+  const players=[{seat:0,name:'Host',connected:true,walls:10,pawn:{x:4,y:8},inventory:['hammer']},{seat:1,name:'Guest',connected:true,walls:10,pawn:{x:4,y:0}}];
+  const {elements,handlers,sent,event}=setup({players,walls:[{x:3,y:3,orientation:'h',owner:1}]});
+  elements.get('itemTray').children[0].onclick();
+  assert.equal(sent.length,0);
+  handlers.click(event(4.5,4.5));
+  assert.equal(sent.length,0);
+  handlers.click(event(4.5,4));
+  assert.deepEqual(sent,[{type:'use_item',item:'hammer',wall:{x:3,y:3,orientation:'h'}}]);
+});
+
+test('a quick Hammer tap selects a wall once on touch screens',()=>{
+  const players=[{seat:0,name:'Host',connected:true,walls:10,pawn:{x:4,y:8},inventory:['hammer']},{seat:1,name:'Guest',connected:true,walls:10,pawn:{x:4,y:0}}];
+  const {elements,handlers,sent,event}=setup({players,walls:[{x:3,y:3,orientation:'h',owner:1}]});
+  elements.get('itemTray').children[0].onclick();
+  const touch=event(4.5,4,{pointerType:'touch'});
+  handlers.pointerdown(touch);handlers.pointerup(touch);handlers.click(touch);
+  assert.deepEqual(sent,[{type:'use_item',item:'hammer',wall:{x:3,y:3,orientation:'h'}}]);
 });
 
 test('Wall Jump and Sprint expose their special move targets',()=>{
