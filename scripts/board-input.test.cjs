@@ -13,7 +13,7 @@ function setup(overrides={}) {
     querySelector:()=>element(), appendChild(child){this.children.push(child)}, addEventListener(){}, getContext:()=>ctx,
     getBoundingClientRect:()=>({left:0,top:0,width:600,height:600}), setPointerCapture(){}, hasPointerCapture:()=>true, releasePointerCapture(){} });
   const board=element();board.addEventListener=(name,fn)=>handlers[name]=fn;elements.set('board',board);
-  const state={type:'state',room:'ABCDE',maxPlayers:2,started:true,winner:-1,turn:0,you:0,host:true,walls:null,
+  const state={type:'state',room:'ABCDE',maxPlayers:2,itemsEnabled:true,started:true,winner:-1,turn:0,you:0,host:true,walls:null,
     players:[{seat:0,name:'Host',connected:true,walls:10,pawn:{x:4,y:8}},{seat:1,name:'Guest',connected:true,walls:10,pawn:{x:4,y:0}}]};
   Object.assign(state,overrides);
   const sandbox={document:{getElementById:id=>{if(!elements.has(id))elements.set(id,element());return elements.get(id)},querySelector:()=>element(),querySelectorAll:()=>[],createElement:element},
@@ -22,7 +22,7 @@ function setup(overrides={}) {
     addEventListener(){},clearTimeout(){},setTimeout(){},setInterval(){},Date,console,__TEST_STATE__:state,
     __BLOCKLINE_SEND_OVERRIDE__:payload=>sent.push(JSON.parse(JSON.stringify(payload)))};
   sandbox.globalThis=sandbox;
-  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms,nextConnectedSeat,roundOver,finishCrownPlayer,completeTurn,maybeSpawnTreasure,outerTiles,itemMoves,collectTreasure,bestAutoMove,placedWallAt,removeSelectedWall,consumeItem,ITEM_TYPES};'),sandbox);
+  vm.runInNewContext(source.replace('draw();connect();','draw();receiveState(__TEST_STATE__);globalThis.__TEST_API__={atGoal,legalMoves,legalWall,startingPawn,randomBorderPawns,resetRawGame,boardSize,wallsPerPlayer,wallOwnerColor,joinableRooms,nextConnectedSeat,roundOver,finishCrownPlayer,completeTurn,maybeSpawnTreasure,outerTiles,itemMoves,collectTreasure,bestAutoMove,placedWallAt,removeSelectedWall,consumeItem,roomToGame,ITEM_TYPES};'),sandbox);
   const event=(u,v,extra={})=>({clientX:57+u*54,clientY:57+v*54,pointerType:'mouse',pointerId:1,...extra});
   const boardEvent=(size,u,v,extra={})=>({clientX:57+u*486/size,clientY:57+v*486/size,pointerType:'mouse',pointerId:1,...extra});
   return {handlers,sent,event,boardEvent,state,elements,api:sandbox.__TEST_API__};
@@ -52,7 +52,22 @@ test('Crown mode uses the square board for moves and walls',()=>{
   assert.deepEqual(sent,[{type:'move',x:2,y:1},{type:'wall',x:3,y:3,orientation:'h'}]);
 });
 
-test('Crown rounds randomize five unique non-corner edge spawns',()=>{
+test('classic rounds randomize seats and first turn while preserving each side’s goal',()=>{
+  const {api}=setup(),players=Object.fromEntries(Array.from({length:4},(_,seat)=>[`u${seat}`,{seat,walls:0,pawn:{x:4,y:4}}]));
+  const room={maxPlayers:4,mode:'classic',players,walls:[],turn:0,winner:2};
+  api.resetRawGame(room,()=>0);
+  assert.deepEqual(Object.values(room.players).map(p=>p.seat),[1,2,3,0]);
+  for(const player of Object.values(room.players)){
+    assert.deepEqual(player.pawn,api.startingPawn(player.seat,'classic'));
+    assert.equal(api.atGoal(player.seat,player.pawn,room),false);
+  }
+  assert.equal(room.turn,1);
+  api.resetRawGame(room,()=>0.99);
+  assert.equal(room.turn,3);
+  assert.deepEqual(Object.values(room.players).map(p=>p.seat).sort(),[0,1,2,3]);
+});
+
+test('Crown rounds randomize five unique non-corner edge spawns and first turn',()=>{
   const {api}=setup(),players=Object.fromEntries(Array.from({length:5},(_,seat)=>[`u${seat}`,{seat,walls:0,pawn:{x:5,y:5}}]));
   const room={maxPlayers:5,mode:'crown',players,walls:[],turn:3,winner:2};
   api.resetRawGame(room);
@@ -61,7 +76,7 @@ test('Crown rounds randomize five unique non-corner edge spawns',()=>{
   assert.ok(pawns.every(p=>(p.x===0||p.x===10||p.y===0||p.y===10)&&!((p.x===0||p.x===10)&&(p.y===0||p.y===10))));
   assert.ok(Object.values(room.players).every(p=>p.walls===8));
   assert.ok(Object.values(room.players).every(p=>p.finished===false&&p.place===0));
-  assert.equal(room.turn,0);
+  assert.ok(Object.values(room.players).some(p=>p.seat===room.turn));
   assert.equal(room.winner,-1);
   assert.equal(room.loser,-1);
 });
@@ -95,6 +110,32 @@ test('Firebase database rules remain valid JSON',()=>{
   assert.equal(rules.rules.rooms['.read'],'auth != null');
   assert.ok(rules.rules.rooms.$room.treasureStartTurn['.validate'].includes('newData.val() >= 1'));
   assert.ok(rules.rules.rooms.$room.treasureEveryTurns['.validate'].includes('newData.val() >= 1'));
+  assert.ok(rules.rules.rooms.$room.itemsEnabled['.validate'].includes('newData.isBoolean()'));
+});
+
+test('item setting defaults on for existing rooms and can be turned off when creating a room',()=>{
+  const {api,elements,sent}=setup();
+  assert.equal(api.roomToGame({maxPlayers:2,players:{}},'ABCDE').itemsEnabled,true);
+  elements.get('itemsEnabled').value='off';
+  elements.set('turnTime',{value:'30'});
+  elements.set('treasureStartTurn',{value:'10'});
+  elements.set('treasureEveryTurns',{value:'5'});
+  elements.get('createBtn').onclick();
+  assert.equal(sent[0].itemsEnabled,false);
+});
+
+test('item-free rooms do not spawn, collect, display, or allow special item moves',()=>{
+  const players=[{seat:0,name:'Host',connected:true,walls:10,pawn:{x:0,y:3},inventory:['hammer']},{seat:1,name:'Guest',connected:true,walls:10,pawn:{x:4,y:0}}];
+  const {api,elements}=setup({itemsEnabled:false,players,treasures:[{x:0,y:3,item:'hammer',turn:10}]});
+  assert.equal(elements.get('itemTray').children.length,0);
+  assert.match(elements.get('itemTray').innerHTML,/Items are off/);
+  const room={itemsEnabled:false,maxPlayers:2,turnNumber:10,players:{a:{...players[0]},b:{...players[1]}},treasures:[]},view={itemsEnabled:false,mode:'classic',maxPlayers:2,players};
+  api.maybeSpawnTreasure(room,view);
+  assert.equal(room.treasures.length,0);
+  room.treasures=[{x:0,y:3,item:'hammer',turn:10}];
+  assert.equal(api.collectTreasure(room,room.players.a),null);
+  assert.equal(room.treasures.length,1);
+  assert.equal(api.itemMoves('sprint',0,view).length,0);
 });
 
 test('treasure starts on turn 10, repeats every 5 turns, and stays on the outer edge',()=>{
